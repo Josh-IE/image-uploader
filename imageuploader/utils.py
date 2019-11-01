@@ -1,3 +1,7 @@
+import boto3
+import redis
+
+
 def _check_type(struct, data):
     """Check if value stored in data is of the struct type.
 
@@ -40,6 +44,23 @@ def _property_range_validate(data, properties):
             or data.get(min_property) < 1
         ):
             raise ValueError("argument value invalid")
+
+
+def connect_redis(host, port, password):
+    # makes connection to a redis server
+    r = redis.Redis(host=host, port=port, password=password)
+    return r
+
+
+def connect_s3(access_key_id, secret_access_key, region):
+    # makes a connection to aws s3
+    s3 = boto3.client(
+        "s3",
+        aws_access_key_id=access_key_id,
+        aws_secret_access_key=secret_access_key,
+        region_name=region,
+    )
+    return s3
 
 
 def validate_config(schema, data, properties):

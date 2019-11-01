@@ -3,13 +3,15 @@ ImageUploader exception classes.
 """
 
 
-class ImagePropertyTooBigError(Exception):
+class ImagePropertySizeError(Exception):
     """An attribute of the image falls outside the required range."""
 
-    pass
+    def __init__(self, message):
+        self.message = message
 
 
 class InvalidImageError(Exception):
     """The reference does not contain a valid image."""
 
-    pass
+    def __init__(self, message):
+        self.message = message

@@ -1,7 +1,11 @@
-import ImageUtil
+import base64
+from datetime import timedelta
+import uuid
 
-from imageuploader import exceptions
-from imageuploader import utils
+from PIL import Image
+
+from . import exceptions
+from . import utils
 
 
 class ImageUploader:
@@ -21,19 +25,35 @@ class ImageUploader:
     # list of image properties of interest
     _properties = ["width", "height"]
 
-    def __init__(self, max_width, max_height, min_width=1, min_height=1):
+    def __init__(
+        self,
+        storage_credentials,
+        max_width,
+        max_height,
+        mem_db_host="localhost",
+        mem_db_port=6379,
+        mem_db_password=None,
+        min_width=1,
+        min_height=1,
+    ):
         """Instantiate class with image attribute validation bounds.
 
             Arguments:
+                storage_credentials {dict}{access_key_id, bucket_name, secret_access_key, region} -- storage credentails
                 max_width {int} -- maximum width of image.
                 max_height {int} -- maximum height of image.
                 min_width {int} -- minimum width of image.
                 min_height {int} -- minimum height of image.
+                mem_db_host {str} -- memory database host address.
+                mem_db_port {int} -- memory database port.
+                mem_db_password {str, None} -- memory database password.
             Raises:
                 KeyError, TypeError, ValueError
             Returns:
                 N/A.
         """
+        self.storage_credentials = storage_credentials
+
         self.image_config = {
             "min_width": min_width,
             "max_width": max_width,
@@ -41,80 +61,136 @@ class ImageUploader:
             "max_height": max_height,
         }
 
-        # validate config value types and range
+        self.mem_db_host = mem_db_host
+        self.mem_db_port = mem_db_port
+        self.mem_db_password = mem_db_password
+
+        # validate image config value types and range
         utils.validate_config(
             self._image_config_schema, self.image_config, self._properties
         )
 
-    def _cache_image_in_memory(self, image_file):
-        # ...
-        return
+        # generate image identifier
+        self.image_identifier = str(uuid.uuid4())
 
-    def _upload_to_server(self, image_file):
-        # ...
-        return
+    # memory methods
+    def _connect_redis(self):
+        # conects to a redis data structure server
+        return utils.connect_redis(
+            self.mem_db_host, self.mem_db_port, self.mem_db_password
+        )
 
-    def upload(self, image_file):
-        """Validate image file, Cache image file, Upload image file to remote server.
+    def _connect_mem_db(self):
+        # connects to an in-memory database
+        return self._connect_redis()
 
-            Arguments:
-                image_file {path, str, stream} -- Image path or image file object.
-            Raises:
-                ImagePropertyTooBigError, InvalidImageError
-            Returns:
-                N/A.
-        """
-        self._validate(image_file)
+    def _cache_in_redis(self):
+        # cache in redis
+        cursor = self._connect_mem_db()
+        cursor.setex(
+            self.image_identifier,
+            timedelta(minutes=1440),
+            value=self.image_base_64,
+        )
 
-        self._cache_image_in_memory(image_file)
-        self._upload_to_server(image_file)
+    def _cache_image_in_memory(self):
+        # cache image to memory
+        self._cache_in_redis()
 
-    def _validate_width(self, image_file):
+    # storage methods
+    def _upload_to_s3(self):
+        # upload image to aws s3 server
+        s3 = utils.connect_s3(
+            self.storage_credentials["access_key_id"],
+            self.storage_credentials["secret_access_key"],
+            self.storage_credentials["region"],
+        )
+        self.image_object.seek(0)
+        self.file_name = f"{self.image_identifier}.{self.format}"
+        s3.upload_fileobj(
+            self.image_object,
+            self.storage_credentials["bucket_name"],
+            self.file_name,
+        )
+
+    def _upload_to_server(self):
+        # upload image to server
+        self._upload_to_s3()
+
+    # validate methods
+    def _validate_width(self):
         """Check validity of image file by comparing its width dimension to the acceptable bounds.
 
-            Arguments:
-                image_file {file} -- Image path or image file object.
             Raises:
-                ImagePropertyTooBigError
+                ImagePropertySizeError
             Returns:
                 N/A.
         """
-        width = ImageUtil.getWidth(image_file)
+        width = self.image_ref.width
         if width > self.image_config["max_width"]:
-            raise exceptions.ImagePropertyTooBigError(
+            raise exceptions.ImagePropertySizeError(
                 f"image width {width}px exceeds maximum width of {self.image_config['max_width']}px"
             )
 
-    def _validate_height(self, image_file):
+    def _validate_height(self):
         """Check validity of image file by comparing its height dimension to the acceptable bounds.
 
-            Arguments:
-                image_file {file} -- Image path or image file object.
             Raises:
-                ImagePropertyTooBigError
+                ImagePropertySizeError
             Returns:
                 N/A.
         """
-        height = ImageUtil.getHeight(image_file)
+        height = self.image_ref.height
         if height > self.image_config["max_height"]:
-            raise exceptions.ImagePropertyTooBigError(
+            raise exceptions.ImagePropertySizeError(
                 f"image height {height}px exceeds maximum width of {self.image_config['max_height']}px"
             )
 
-    def _validate(self, image_file):
+    def _validate(self):
         """Check validity of image file by comparing its dimensions to the acceptable bounds.
 
-            Arguments:
-                image_file {file} -- Image path or image file object.
             Raises:
-                ImagePropertyTooBigError, InvalidImageError
+                ImagePropertySizeError, InvalidImageError
             Returns:
                 N/A.
         """
-        if image_file is None:
-            raise exceptions.InvalidImageError("image_file is null")
+        if self.image_object is None:
+            raise exceptions.InvalidImageError("the file provided is null")
+
+        try:
+            # open image with pillow
+            self.image_ref = Image.open(self.image_object)
+
+            # get image format
+            self.format = self.image_ref.format.lower()
+
+            # BytesIO image object to base64
+            self.image_object.seek(0)
+            self.image_base_64 = base64.b64encode(self.image_object.read())
+        except IOError:
+            raise exceptions.InvalidImageError(
+                "the file provided is not a valid image"
+            )
 
         # validate width
-        self._validate_width(image_file)
+        self._validate_width()
         # validate height
-        self._validate_height(image_file)
+        self._validate_height()
+
+    # public upload method
+    def upload(self, image_object):
+        """Validate image file, Cache image file, Upload image file to remote server.
+
+            Arguments:
+                image_object {BytesIO} -- BytesIO file object.
+            Raises:
+                ImagePropertySizeError, InvalidImageError
+            Returns:
+                N/A.
+        """
+        image_object.seek(0)
+        self.image_object = image_object
+
+        self._validate()
+        self._cache_image_in_memory()
+        self._upload_to_server()
