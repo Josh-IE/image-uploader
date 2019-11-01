@@ -1,0 +1,14 @@
+version: '3'
+services:
+  img-upload-api:
+    build: . 
+    ports:
+      - "80:8000"
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+    stdin_open: true
+    tty: true
+    command: python manage.py runserver 0.0.0.0:8000
