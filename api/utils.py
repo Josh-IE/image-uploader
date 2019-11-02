@@ -1,4 +1,6 @@
 import io
+import os
+import uuid
 
 import requests
 from django.conf import settings
@@ -7,14 +9,29 @@ from imageuploader.imageuploader import image_uploader
 
 
 def download_file(url):
-    # stream response, so we dont have to keep large files in memory
-    file_object = requests.get(url, stream=True, timeout=1)
+    # downloads file in url and retuns as a BytesIO object
 
-    result = io.BytesIO()
-    # write file, being streamed from file server
-    for chunk in file_object.iter_content(chunk_size=1048576):
-        result.write(chunk)
-    return result
+    # stream response, so we dont have to keep large files in memory
+    r = requests.get(url, stream=True, timeout=5)
+
+    temp_file_name = f"temp/{str(uuid.uuid4())}.tmp"
+
+    """
+    write stream in chunks of 1MB to file on disk to prevent hogging
+    the memory during the duration of download.
+    """  
+    with open(temp_file_name, 'wb') as f:
+        for chunk in r.iter_content(chunk_size=1048576): 
+            f.write(chunk)
+
+    # after download, read the file from disk into a BytesIO file object in memory
+    with open(temp_file_name, 'rb') as f:
+        file_object = io.BytesIO(f.read())
+
+    # clean up. remove file from disk
+    os.remove(temp_file_name)
+
+    return file_object
 
 
 def generate_s3_path(filename):
