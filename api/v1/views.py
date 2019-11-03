@@ -32,12 +32,12 @@ class ImageUpload(views.APIView):
         ) as e:
             error = e.message
             error_code = status.HTTP_400_BAD_REQUEST
-        except requests.RequestException as e:
-            error = str(e)
+        except requests.RequestException:
+            error = "failure in reaching server."
             error_code = status.HTTP_424_FAILED_DEPENDENCY
-        # except Exception as e:
-        #     error = "sorry, service is temporarily unavailable."
-        #     error_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+        except Exception:
+            error = "sorry, service is temporarily unavailable."
+            error_code = status.HTTP_500_INTERNAL_SERVER_ERROR
 
         if error:
             return Response({"message": error}, error_code)

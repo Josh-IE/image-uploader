@@ -92,9 +92,7 @@ class ImageUploader:
         # cache in redis
         cursor = self._connect_mem_db()
         cursor.setex(
-            self.image_identifier,
-            timedelta(minutes=1440),
-            value=self.image_base_64,
+            self.file_name, timedelta(minutes=1440), value=self.image_base_64,
         )
 
     def _cache_image_in_memory(self):
@@ -109,13 +107,16 @@ class ImageUploader:
             self.storage_credentials["secret_access_key"],
             self.storage_credentials["region"],
         )
+
         self.image_object.seek(0)
-        self.file_name = f"{self.image_identifier}.{self.format}"
+
         s3.upload_fileobj(
             self.image_object,
             self.storage_credentials["bucket_name"],
             self.file_name,
         )
+
+        self.uploaded_image_url = f"https://{self.storage_credentials['bucket_name']}.s3.amazonaws.com/{self.file_name}"
 
     def _upload_to_server(self):
         # upload image to server
@@ -173,7 +174,7 @@ class ImageUploader:
             self.image_base_64 = base64.b64encode(self.image_object.read())
         except IOError:
             raise exceptions.InvalidImageError(
-                "the file provided is not a valid image"
+                "the resource provided is not a valid image"
             )
 
         # validate width
@@ -195,6 +196,13 @@ class ImageUploader:
         image_object.seek(0)
         self.image_object = image_object
 
+        # validate image
         self._validate()
+
+        # generate filename
+        self.file_name = f"{self.image_identifier}.{self.format}"
+
+        # cache image
         self._cache_image_in_memory()
+        # upload image to hosting server
         self._upload_to_server()

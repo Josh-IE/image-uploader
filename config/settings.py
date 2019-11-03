@@ -25,7 +25,7 @@ SECRET_KEY = "t_l8mm^u!s4sytm4ekvce@$pxne$x0q0q&xnpvz%55bva@i+rj"
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ["*"]
 
 
 # Application definition
@@ -125,6 +125,7 @@ AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 AWS_REGION = os.getenv("AWS_REGION")
 
 S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
+S3_BASE_URL = os.getenv("S3_BASE_URL")
 
 IMAGE_MAX_WIDTH = 6000
 IMAGE_MAX_HEIGHT = 6000
